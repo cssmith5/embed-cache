@@ -125,4 +125,4 @@ npm test
 
 ## License
 
-MIT (c) ashley-r
+MIT (c) cssmith5
