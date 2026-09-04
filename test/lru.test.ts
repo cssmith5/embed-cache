@@ -92,3 +92,61 @@ test('unbounded Lru never evicts', () => {
   for (let i = 0; i < 100; i++) lru.set(`k${i}`, vec(16));
   assert.strictEqual(lru.size, 100);
 });
+
+function fakeClock(start = 0): { now: () => number; advance: (ms: number) => void } {
+  let t = start;
+  return { now: () => t, advance: (ms: number) => (t += ms) };
+}
+
+test('maxAge keeps an entry until its age passes, then treats it as a miss', () => {
+  const clock = fakeClock();
+  const lru = new Lru({ maxAge: 100, now: clock.now });
+  lru.set('a', vec(1));
+
+  clock.advance(99);
+  assert.deepStrictEqual(lru.get('a'), vec(1));
+
+  clock.advance(1);
+  assert.strictEqual(lru.get('a'), undefined);
+});
+
+test('an expired entry is dropped from size and bytes on access', () => {
+  const clock = fakeClock();
+  const lru = new Lru({ maxAge: 100, now: clock.now });
+  lru.set('a', vec(1));
+  clock.advance(200);
+
+  assert.strictEqual(lru.has('a'), false);
+  assert.strictEqual(lru.size, 0);
+  assert.strictEqual(lru.bytes, 0);
+});
+
+test('re-setting a key resets its age', () => {
+  const clock = fakeClock();
+  const lru = new Lru({ maxAge: 100, now: clock.now });
+  lru.set('a', vec(1));
+  clock.advance(60);
+  lru.set('a', vec(1)); // refreshed at t=60, so it now expires at t=160
+
+  clock.advance(60); // t=120: would have expired under the original set
+  assert.strictEqual(lru.has('a'), true);
+});
+
+test('maxAge evicts an expired entry from the front even when under capacity', () => {
+  const clock = fakeClock();
+  const lru = new Lru({ maxAge: 100, now: clock.now });
+  lru.set('a', vec(1));
+  clock.advance(200);
+  lru.set('b', vec(1)); // triggers a sweep; 'a' is expired and well under any budget
+
+  assert.strictEqual(lru.size, 1);
+  assert.strictEqual(lru.has('b'), true);
+});
+
+test('without maxAge, entries never expire regardless of elapsed time', () => {
+  const clock = fakeClock();
+  const lru = new Lru({ now: clock.now });
+  lru.set('a', vec(1));
+  clock.advance(1_000_000_000);
+  assert.deepStrictEqual(lru.get('a'), vec(1));
+});

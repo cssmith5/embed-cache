@@ -12,6 +12,12 @@ export interface EmbedCacheOptions {
   maxEntries?: number;
   /** max bytes of vector payload held in memory (default unlimited) */
   maxBytes?: number;
+  /**
+   * max time in ms a value stays fresh in memory (default unlimited). Only
+   * governs the memory tier: an expired entry is just a memory miss, and
+   * falls through to the disk tier (which never expires) or recompute.
+   */
+  maxAge?: number;
   /** mixed into every key; bump it to invalidate after a chunking change */
   namespace?: string;
   /** reject vectors of any other length */
@@ -52,7 +58,7 @@ export class EmbedCache {
   #stats: RawStats = freshStats();
 
   constructor(options: EmbedCacheOptions = {}) {
-    this.#memory = new Lru({ maxEntries: options.maxEntries, maxBytes: options.maxBytes });
+    this.#memory = new Lru({ maxEntries: options.maxEntries, maxBytes: options.maxBytes, maxAge: options.maxAge });
     this.#disk = options.dir ? new DiskStore(options.dir) : undefined;
     this.#namespace = options.namespace ?? '';
     this.#expectedDim = options.expectedDim;

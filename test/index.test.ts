@@ -182,6 +182,16 @@ test('resetStats zeroes the counters without touching cached entries', async () 
   assert.strictEqual(stats.entries, 1);
 });
 
+test('maxAge falls through to disk once a memory entry goes stale', async (t) => {
+  const dir = await withTempDir(t);
+  const cache = new EmbedCache({ dir, maxAge: 1 });
+  await cache.set('model', 'text', [1, 2, 3]);
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepStrictEqual(await cache.get('model', 'text'), Float32Array.from([1, 2, 3]));
+  assert.strictEqual(cache.stats().diskHits, 1);
+});
+
 test('namespace changes the key, so the same model/text misses under a different namespace', async () => {
   const a = new EmbedCache({ namespace: 'v1' });
   const b = new EmbedCache({ namespace: 'v2' });
