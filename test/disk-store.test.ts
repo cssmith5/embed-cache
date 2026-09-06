@@ -92,6 +92,32 @@ test('clear removes the whole store directory', async (t) => {
   assert.strictEqual(remaining.length, 0);
 });
 
+test('keys yields every key on disk, and nothing once cleared', async (t) => {
+  const dir = await withTempDir(t);
+  const store = new DiskStore(dir);
+  const one = embedKey('ns', 'model', 'one');
+  const two = embedKey('ns', 'model', 'two');
+  await store.set(one, Float32Array.from([1]));
+  await store.set(two, Float32Array.from([2]));
+
+  const found: string[] = [];
+  for await (const key of store.keys()) found.push(key);
+  assert.deepStrictEqual(found.sort(), [one, two].sort());
+
+  await store.clear();
+  const afterClear: string[] = [];
+  for await (const key of store.keys()) afterClear.push(key);
+  assert.deepStrictEqual(afterClear, []);
+});
+
+test('keys on a directory that was never created yields nothing', async (t) => {
+  const dir = join(await withTempDir(t), 'never-created');
+  const store = new DiskStore(dir);
+  const found: string[] = [];
+  for await (const key of store.keys()) found.push(key);
+  assert.deepStrictEqual(found, []);
+});
+
 test('a new DiskStore over the same directory reads back a previously written vector', async (t) => {
   const dir = await withTempDir(t);
   const key = embedKey('ns', 'model', 'text');

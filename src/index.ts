@@ -175,6 +175,38 @@ export class EmbedCache {
     if (this.#disk) await this.#disk.clear();
   }
 
+  /**
+   * Every key currently held in memory and/or on disk, deduplicated. Keys
+   * are opaque SHA-256 hashes, not the (model, text) pairs that produced
+   * them, so this is meant for bulk work against a keep-set you already
+   * computed with `embedKey`, not for browsing by model or text.
+   */
+  async *keys(): AsyncGenerator<string> {
+    const seen = new Set<string>();
+    for (const key of this.#memory.keys()) {
+      seen.add(key);
+      yield key;
+    }
+    if (this.#disk) {
+      for await (const key of this.#disk.keys()) {
+        if (!seen.has(key)) yield key;
+      }
+    }
+  }
+
+  /** deletes every key for which predicate returns true, from both tiers; returns the count removed */
+  async purge(predicate: (key: string) => boolean): Promise<number> {
+    const toRemove: string[] = [];
+    for await (const key of this.keys()) {
+      if (predicate(key)) toRemove.push(key);
+    }
+    for (const key of toRemove) {
+      this.#memory.delete(key);
+      if (this.#disk) await this.#disk.delete(key);
+    }
+    return toRemove.length;
+  }
+
   async #getByKey(key: string): Promise<Float32Array | undefined> {
     const cached = this.#memory.get(key);
     if (cached !== undefined) {

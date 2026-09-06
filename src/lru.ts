@@ -86,6 +86,16 @@ export class Lru {
     this.#bytes = 0;
   }
 
+  /** live (non-expired) keys, oldest first; does not evict, so a stale entry may still show up */
+  keys(): string[] {
+    const now = this.#now();
+    const live: string[] = [];
+    for (const [key, entry] of this.#map) {
+      if (now < entry.expiresAt) live.push(key);
+    }
+    return live;
+  }
+
   #evict(): void {
     const now = this.#now();
     for (const [key, entry] of this.#map) {

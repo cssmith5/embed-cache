@@ -92,12 +92,19 @@ vector back from disk.
 - `stats()` -- `memoryHits`, `diskHits`, `misses`, `computed`, `corrupt`,
   `diskWrites`, `entries`, `bytes`, `hitRate`; `resetStats()` zeroes them.
 - `clearMemory()` / `clear()` -- drop the memory tier, or both tiers.
+- `keys()` -- async iterator over every key held in memory and/or on disk,
+  deduplicated. Keys are the SHA-256 hash `embedKey` produces, not the
+  (model, text) pair that made them.
+- `purge(predicate)` -- deletes every key (from both tiers) for which
+  `predicate(key)` is true, and returns how many were removed. Meant for
+  bulk invalidation against a keep-set computed with `embedKey`, e.g.
+  `cache.purge((key) => !currentKeys.has(key))`.
 
 `maxAge` only bounds how long a value is trusted in memory before it's
 re-fetched or recomputed; the disk format has no timestamp field, so a
-value written to disk is kept until you delete it or call `clear()`. If you
-need embeddings to actually expire, put the on-disk directory behind a
-process that also gets torn down periodically, or bump `namespace`.
+value written to disk is kept until you delete it or call `clear()`/`purge()`.
+If you need embeddings to actually expire, put the on-disk directory behind
+a process that also gets torn down periodically, or bump `namespace`.
 
 The pieces are exported separately too, if you want them on their own:
 `Lru` (byte-aware LRU), `DiskStore` (atomic sharded file store),

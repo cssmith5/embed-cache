@@ -3,12 +3,17 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EmbedCache } from '../src/index.ts';
+import { EmbedCache, embedKey } from '../src/index.ts';
 
 async function withTempDir(t: import('node:test').TestContext): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'embed-cache-test-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   return dir;
+}
+
+// the caches under test all use the default namespace ''
+function keyOf(model: string, text: string): string {
+  return embedKey('', model, text);
 }
 
 test('get on an empty cache is a miss, set makes it a hit', async () => {
@@ -190,6 +195,36 @@ test('maxAge falls through to disk once a memory entry goes stale', async (t) =>
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.deepStrictEqual(await cache.get('model', 'text'), Float32Array.from([1, 2, 3]));
   assert.strictEqual(cache.stats().diskHits, 1);
+});
+
+test('keys yields memory-only and disk-only keys, deduplicated', async (t) => {
+  const dir = await withTempDir(t);
+  const cache = new EmbedCache({ dir });
+  await cache.set('model', 'a', [1]);
+  await cache.set('model', 'b', [2]);
+  cache.clearMemory();
+  await cache.get('model', 'a'); // pulls 'a' back into memory, now on both tiers
+
+  const found: string[] = [];
+  for await (const key of cache.keys()) found.push(key);
+
+  const expected = [keyOf('model', 'a'), keyOf('model', 'b')];
+  assert.deepStrictEqual(found.sort(), expected.sort());
+});
+
+test('purge removes matching keys from both tiers and returns the count', async (t) => {
+  const dir = await withTempDir(t);
+  const cache = new EmbedCache({ dir });
+  await cache.set('model', 'keep', [1]);
+  await cache.set('model', 'drop', [2]);
+
+  const dropKey = keyOf('model', 'drop');
+  const removed = await cache.purge((key) => key === dropKey);
+
+  assert.strictEqual(removed, 1);
+  assert.deepStrictEqual(await cache.get('model', 'keep'), Float32Array.from([1]));
+  assert.strictEqual(await cache.get('model', 'drop'), undefined);
+  assert.strictEqual(await new EmbedCache({ dir }).get('model', 'drop'), undefined);
 });
 
 test('namespace changes the key, so the same model/text misses under a different namespace', async () => {

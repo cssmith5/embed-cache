@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { decodeVector, encodeVector, VectorFormatError } from './float32.ts';
@@ -68,5 +68,24 @@ export class DiskStore {
 
   async clear(): Promise<void> {
     await rm(this.#dir, { recursive: true, force: true });
+  }
+
+  /** walks the shard tree and yields every key with a file on disk, in no particular order */
+  async *keys(): AsyncGenerator<string> {
+    const top = await readdir(this.#dir, { withFileTypes: true }).catch((err) => {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw err;
+    });
+    for (const a of top) {
+      if (!a.isDirectory()) continue;
+      const mids = await readdir(join(this.#dir, a.name), { withFileTypes: true }).catch(() => []);
+      for (const b of mids) {
+        if (!b.isDirectory()) continue;
+        const files = await readdir(join(this.#dir, a.name, b.name)).catch(() => []);
+        for (const file of files) {
+          if (file.endsWith('.vec')) yield `${a.name}${b.name}${file.slice(0, -'.vec'.length)}`;
+        }
+      }
+    }
   }
 }
