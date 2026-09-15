@@ -81,6 +81,7 @@ vector back from disk.
 | `maxEntries` | max vectors held in memory (default unlimited) |
 | `maxBytes` | max bytes of vector payload held in memory (default unlimited) |
 | `maxAge` | max time in ms a value stays fresh in memory (default unlimited) |
+| `diskMaxAge` | max time in ms a value stays fresh on disk, checked against the file's mtime (default unlimited) |
 | `namespace` | mixed into every key; bump it to invalidate after a chunking change |
 | `expectedDim` | reject vectors of any other length |
 
@@ -101,10 +102,14 @@ vector back from disk.
   `cache.purge((key) => !currentKeys.has(key))`.
 
 `maxAge` only bounds how long a value is trusted in memory before it's
-re-fetched or recomputed; the disk format has no timestamp field, so a
-value written to disk is kept until you delete it or call `clear()`/`purge()`.
-If you need embeddings to actually expire, put the on-disk directory behind
-a process that also gets torn down periodically, or bump `namespace`.
+re-fetched or recomputed; the disk format has no timestamp field of its own,
+so by default a value written to disk is kept until you delete it or call
+`clear()`/`purge()`. Set `diskMaxAge` if staleness needs to survive a
+restart -- it's checked against the file's mtime on read, and a stale file
+is deleted and treated as a miss rather than served. Two `EmbedCache`s
+pointed at the same directory with different `diskMaxAge` values will
+disagree about what's stale, since the age limit lives in the reader, not
+the file.
 
 The pieces are exported separately too, if you want them on their own:
 `Lru` (byte-aware LRU), `DiskStore` (atomic sharded file store),

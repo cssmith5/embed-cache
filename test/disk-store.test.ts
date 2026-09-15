@@ -118,6 +118,30 @@ test('keys on a directory that was never created yields nothing', async (t) => {
   assert.deepStrictEqual(found, []);
 });
 
+test('maxAge treats a file older than the limit as a miss and removes it', async (t) => {
+  const dir = await withTempDir(t);
+  const store = new DiskStore(dir, { maxAge: 1 });
+  const key = embedKey('ns', 'model', 'text');
+  await store.set(key, Float32Array.from([1, 2, 3]));
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.strictEqual(await store.get(key), undefined);
+
+  const [a, b] = keyToSegments(key);
+  const afterCleanup = await readdir(join(dir, a, b)).catch(() => []);
+  assert.strictEqual(afterCleanup.length, 0);
+});
+
+test('maxAge leaves a fresh file readable', async (t) => {
+  const dir = await withTempDir(t);
+  const store = new DiskStore(dir, { maxAge: 60_000 });
+  const key = embedKey('ns', 'model', 'text');
+  const vector = Float32Array.from([1, 2, 3]);
+  await store.set(key, vector);
+
+  assert.deepStrictEqual(await store.get(key), vector);
+});
+
 test('a new DiskStore over the same directory reads back a previously written vector', async (t) => {
   const dir = await withTempDir(t);
   const key = embedKey('ns', 'model', 'text');

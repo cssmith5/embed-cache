@@ -1,8 +1,17 @@
-import { mkdir, readdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { decodeVector, encodeVector, VectorFormatError } from './float32.ts';
 import { keyToSegments } from './key.ts';
+
+export interface DiskStoreOptions {
+  /**
+   * max time in ms a file is trusted before it's treated as stale, based on
+   * its mtime rather than a field in the file (default unlimited). Unlike
+   * the in-memory maxAge, this survives a process restart.
+   */
+  maxAge?: number;
+}
 
 /**
  * One file per vector under <dir>/<key[0:2]>/<key[2:4]>/<key[4:]>.vec, so no
@@ -12,9 +21,11 @@ import { keyToSegments } from './key.ts';
  */
 export class DiskStore {
   readonly #dir: string;
+  readonly #maxAge?: number;
 
-  constructor(dir: string) {
+  constructor(dir: string, options: DiskStoreOptions = {}) {
     this.#dir = dir;
+    this.#maxAge = options.maxAge;
   }
 
   #pathFor(key: string): string {
@@ -24,6 +35,21 @@ export class DiskStore {
 
   async get(key: string): Promise<Float32Array | undefined> {
     const path = this.#pathFor(key);
+
+    if (this.#maxAge !== undefined) {
+      let mtimeMs: number;
+      try {
+        mtimeMs = (await stat(path)).mtimeMs;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+        throw err;
+      }
+      if (Date.now() - mtimeMs > this.#maxAge) {
+        await unlink(path).catch(() => {});
+        return undefined;
+      }
+    }
+
     let buf: Buffer;
     try {
       buf = await readFile(path);

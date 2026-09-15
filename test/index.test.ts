@@ -197,6 +197,16 @@ test('maxAge falls through to disk once a memory entry goes stale', async (t) =>
   assert.strictEqual(cache.stats().diskHits, 1);
 });
 
+test('diskMaxAge is a miss on disk even after a restart', async (t) => {
+  const dir = await withTempDir(t);
+  await new EmbedCache({ dir, diskMaxAge: 1 }).set('model', 'text', [1, 2, 3]);
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const reader = new EmbedCache({ dir, diskMaxAge: 1 });
+  assert.strictEqual(await reader.get('model', 'text'), undefined);
+  assert.strictEqual(reader.stats().misses, 1);
+});
+
 test('keys yields memory-only and disk-only keys, deduplicated', async (t) => {
   const dir = await withTempDir(t);
   const cache = new EmbedCache({ dir });

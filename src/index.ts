@@ -15,9 +15,16 @@ export interface EmbedCacheOptions {
   /**
    * max time in ms a value stays fresh in memory (default unlimited). Only
    * governs the memory tier: an expired entry is just a memory miss, and
-   * falls through to the disk tier (which never expires) or recompute.
+   * falls through to the disk tier (governed separately by `diskMaxAge`) or
+   * recompute.
    */
   maxAge?: number;
+  /**
+   * max time in ms a value stays fresh on disk, checked against the file's
+   * mtime (default unlimited). Unlike `maxAge`, this survives a restart; a
+   * stale file is deleted and treated as a miss.
+   */
+  diskMaxAge?: number;
   /** mixed into every key; bump it to invalidate after a chunking change */
   namespace?: string;
   /** reject vectors of any other length */
@@ -59,7 +66,7 @@ export class EmbedCache {
 
   constructor(options: EmbedCacheOptions = {}) {
     this.#memory = new Lru({ maxEntries: options.maxEntries, maxBytes: options.maxBytes, maxAge: options.maxAge });
-    this.#disk = options.dir ? new DiskStore(options.dir) : undefined;
+    this.#disk = options.dir ? new DiskStore(options.dir, { maxAge: options.diskMaxAge }) : undefined;
     this.#namespace = options.namespace ?? '';
     this.#expectedDim = options.expectedDim;
   }
