@@ -136,6 +136,30 @@ Writes go to a temporary file and are renamed into place, so an interrupted
 write can never be read as a valid vector. A file that fails its checksum or
 header check is deleted and recomputed rather than being served or throwing.
 
+## CLI
+
+`embed-cache-cli` inspects and prunes an on-disk cache directory directly, without
+going through your application:
+
+```bash
+node dist/cli.js .cache/embeddings stats
+# 4213 entries, 25.7 MB
+# oldest: 2026-01-04T09:12:03.000Z
+# newest: 2026-02-11T16:40:55.000Z
+
+node dist/cli.js .cache/embeddings list
+node dist/cli.js .cache/embeddings prune --older-than 30d
+node dist/cli.js .cache/embeddings gc
+```
+
+`stats` and `list` read file sizes and mtimes off disk without checking
+checksums. `prune --older-than <duration>` deletes files whose mtime is past
+the given age (`ms`, `s`, `m`, `h`, or `d` suffix, e.g. `12h`); this is a blunt
+age cutoff applied from outside the process, unlike the reader-side
+`diskMaxAge` option above. `gc` reads every file through the same checksum
+check `DiskStore.get` uses and removes whatever fails it, without touching
+anything that's still valid.
+
 ## Test
 
 ```bash
